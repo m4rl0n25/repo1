@@ -4,7 +4,7 @@ name: Hacki AI
 on:
   pull_request:
     branches:
-      - main # Verify this is your main branch
+      - master # Verify this is your main branch
 
 jobs:
   trigger-code-analysis:
