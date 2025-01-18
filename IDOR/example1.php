@@ -2,33 +2,59 @@
 
 require_once('../_helpers/strip.php');
 
-// this database contains a table with 2 rows
+// Secure connection to the database
 $db = new SQLite3('test.db');
 
-$id = $_GET['id'];
+// Start session securely
+session_start();
+if (!isset($_SESSION['user_id'])) {
+    die('Unauthorized access');
+}
 
-if (strlen($id) > 0) {
-  // view a particular secret
-  //
-  // As can be seen in the code, the overview page only selects rows
-  // from the secrets table WHERE user_id = 1. However, the query
-  // below does not have a similar clause OR any kind of authorization
-  // check to make sure that the user is authorized to see secret.
-  // This means any ID can be passed in the ?id= parameter and be
-  // used to read any secret from the table.
-  $query = $db->query('select * from secrets where id = ' . (int)$id);
+// Secure session handling
+$user_id = $_SESSION['user_id']; // Fetch authenticated user's ID
+if (!is_numeric($user_id)) {
+    die('Invalid session data.');
+}
 
-  while ($row = $query->fetchArray()) {
-    echo 'Secret: ' . $row['secret'];
-  }
+// Validate the `id` parameter
+$id = isset($_GET['id']) ? filter_var($_GET['id'], FILTER_VALIDATE_INT) : null;
 
-  echo '<br /><br /><a href="/">Go back</a>';
+if ($id !== null && $id > 0) {
+    try {
+        // Secure query with prepared statements
+        $stmt = $db->prepare('SELECT * FROM secrets WHERE id = :id AND user_id = :user_id');
+        $stmt->bindValue(':id', $id, SQLITE3_INTEGER);
+        $stmt->bindValue(':user_id', $user_id, SQLITE3_INTEGER);
+        $result = $stmt->execute();
+
+        // Fetch and display the result
+        if ($row = $result->fetchArray()) {
+            echo 'Secret: ' . htmlspecialchars($row['secret'], ENT_QUOTES, 'UTF-8'); // Prevent XSS
+        } else {
+            echo 'No secret found or unauthorized access.';
+        }
+    } catch (Exception $e) {
+        error_log('Database error: ' . $e->getMessage());
+        echo 'An error occurred. Please try again later.';
+    }
+
+    echo '<br /><br /><a href="/">Go back</a>';
 } else {
-  // view all the user's secrets (WHERE user_id = 1)
-  $query = $db->query('select * from secrets where user_id = 1');
+    try {
+        // View all the user's secrets securely
+        $stmt = $db->prepare('SELECT * FROM secrets WHERE user_id = :user_id');
+        $stmt->bindValue(':user_id', $user_id, SQLITE3_INTEGER);
+        $result = $stmt->execute();
 
-  echo '<strong>Your secrets</strong><br /><br />';
+        echo '<strong>Your secrets</strong><br /><br />';
 
-  while ($row = $query->fetchArray()) {
-    echo '<a href="/?id=' . $row['id'] . '">#' . $row['id'] . '</a><br />';
-  }
+        while ($row = $result->fetchArray()) {
+            echo '<a href="/?id=' . htmlspecialchars($row['id'], ENT_QUOTES, 'UTF-8') . '">#' . htmlspecialchars($row['id'], ENT_QUOTES, 'UTF-8') . '</a><br />';
+        }
+    } catch (Exception $e) {
+        error_log('Database error: ' . $e->getMessage());
+        echo 'An error occurred. Please try again later.';
+    }
+}
+?>
